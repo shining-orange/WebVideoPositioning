@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MediaHelper",
+  "name": "Web Video Positioning",
   "version": "1.0.0",
-  "description": "网页媒体辅助工具",
+  "description": "自动记录网页视频播放进度，下次访问时自动恢复至上次观看位置",
   "permissions": [
     "storage",
     "activeTab"
