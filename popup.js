@@ -1,5 +1,5 @@
 /**
- * Web Video Positioning - Popup Script
+ * MediaHelper - Popup Script
  * 进度管理面板逻辑
  */
 
@@ -46,7 +46,7 @@
    * Load excluded sites list
    */
   function loadExcludedSites() {
-    chrome.runtime.sendMessage({ type: 'getExcludedSites' }, (sites) => {
+    chrome.runtime.sendMessage({ type: 'getExc' }, (sites) => {
       if (chrome.runtime.lastError) {
         console.error('获取排除列表失败:', chrome.runtime.lastError);
         return;
@@ -120,7 +120,7 @@
           site.enabled = checkbox.checked;
           item.classList.toggle('disabled', !checkbox.checked);
 
-          chrome.runtime.sendMessage({ type: 'updateExcludedSites', sites: excludedSites }, () => {
+          chrome.runtime.sendMessage({ type: 'updExc', sites: excludedSites }, () => {
             // Re-render to maintain sort order
             renderExclusionList(excludedSites);
           });
@@ -135,7 +135,7 @@
         const site = excludedSites.find(s => s.domain === domain);
         if (site) {
           site.scope = select.value;
-          chrome.runtime.sendMessage({ type: 'updateExcludedSites', sites: excludedSites });
+          chrome.runtime.sendMessage({ type: 'updExc', sites: excludedSites });
         }
       });
     });
@@ -148,7 +148,7 @@
         const domain = item.dataset.domain;
 
         if (confirm(`确定要删除 ${domain} 的排除规则吗？`)) {
-          chrome.runtime.sendMessage({ type: 'removeExcludedSite', domain }, (response) => {
+          chrome.runtime.sendMessage({ type: 'rmExc', domain }, (response) => {
             if (response.success) {
               excludedSites = response.sites;
               renderExclusionList(excludedSites);
@@ -179,7 +179,7 @@
       return;
     }
 
-    chrome.runtime.sendMessage({ type: 'addExcludedSite', domain, name, scope }, (response) => {
+    chrome.runtime.sendMessage({ type: 'addExc', domain, name, scope }, (response) => {
       if (response.success) {
         excludedSites = response.sites;
         renderExclusionList(excludedSites);
@@ -297,7 +297,7 @@
         const key = item.dataset.key;
 
         if (confirm('确定要删除这条记录吗？')) {
-          chrome.runtime.sendMessage({ type: 'deleteVP', key }, () => {
+          chrome.runtime.sendMessage({ type: 'deleteMH', key }, () => {
             item.style.animation = 'slideOut 0.3s ease forwards';
             setTimeout(loadProgress, 300);
           });
@@ -326,7 +326,7 @@
    * 加载进度数据
    */
   function loadProgress() {
-    chrome.runtime.sendMessage({ type: 'getAllVP' }, (response) => {
+    chrome.runtime.sendMessage({ type: 'getAllMH' }, (response) => {
       if (chrome.runtime.lastError) {
         console.error('获取进度失败:', chrome.runtime.lastError);
         return;
@@ -340,8 +340,8 @@
    * 加载启用状态
    */
   function loadEnabledState() {
-    chrome.storage.local.get('vp_enabled', (result) => {
-      const enabled = result.vp_enabled !== false; // 默认启用
+    chrome.storage.local.get('mh_enabled', (result) => {
+      const enabled = result.mh_enabled !== false; // 默认启用
       enableToggle.checked = enabled;
     });
   }
@@ -350,9 +350,9 @@
    * 切换启用状态
    */
   function toggleEnabled(enabled) {
-    chrome.storage.local.set({ vp_enabled: enabled }, () => {
+    chrome.storage.local.set({ mh_enabled: enabled }, () => {
       // 通知所有 content script 更新状态
-      chrome.runtime.sendMessage({ type: 'toggleEnabled', enabled });
+      chrome.runtime.sendMessage({ type: 'tglEn', enabled });
     });
   }
 
@@ -385,7 +385,7 @@
    */
   function clearAll() {
     if (confirm('确定要清空所有视频进度记录吗？此操作不可恢复。')) {
-      chrome.runtime.sendMessage({ type: 'clearAllVP' }, () => {
+      chrome.runtime.sendMessage({ type: 'clearAllMH' }, () => {
         loadProgress();
       });
     }

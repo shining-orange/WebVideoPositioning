@@ -84,7 +84,7 @@
 ## 项目结构
 
 ```
-WebVideoPositioning/
+MediaHelper/
 ├── manifest.json      # 扩展配置文件 (Manifest V3)
 ├── background.js      # 后台服务脚本
 ├── content.js         # 内容脚本（注入页面）
@@ -106,7 +106,7 @@ WebVideoPositioning/
 - **核心框架**: Manifest V3
 - **开发语言**: 原生 JavaScript (ES6+)
 - **存储方案**: chrome.storage.local
-- **关键 API**: 
+- **关键 API**:
   - chrome.runtime (消息通信)
   - chrome.storage (数据存储)
   - chrome.tabs (标签页管理)
@@ -124,7 +124,7 @@ function generateVideoId(video) {
   // 清理 URL，移除查询参数和哈希
   const cleanUrl = urlObj.origin + urlObj.pathname;
   const hash = simpleHash(cleanUrl);
-  return `vpos_${hash}`;
+  return `mh_${hash}`;
 }
 ```
 
@@ -165,10 +165,26 @@ function generateVideoId(video) {
 1. 打开 AdGuard 设置
 2. 找到"用户过滤器"
 3. 添加规则：`@@||chrome-extension://*$xmlhttprequest`
+4. 或者在 AdGuard 的"白名单"中添加目标网站域名
 
 ### 进度数据存储在哪里？
 
 所有数据存储在浏览器的 `chrome.storage.local` 中，不会上传到任何服务器。
+
+## 开发调试
+
+如需开启调试日志，修改以下文件中的 `DEBUG` 变量：
+
+```javascript
+// content.js
+const CONFIG = {
+  // ...
+  DEBUG: true  // 改为 true 开启日志
+};
+
+// background.js
+const DEBUG = true;  // 改为 true 开启日志
+```
 
 ## 更新日志
 
@@ -178,6 +194,8 @@ function generateVideoId(video) {
 - 预置主流视频/直播网站排除列表
 - 优化视频 ID 生成，避免重复记录
 - 修复 URL 动态参数导致的重复记录问题
+- 优化 blob URL 视频的识别
+- 关闭生产环境调试日志，提升性能
 
 ### v1.0.0
 - 初始版本发布

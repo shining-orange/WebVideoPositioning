@@ -1,5 +1,5 @@
 /**
- * Web Video Positioning - Content Script
+ * MediaHelper - Content Script
  * 检测页面视频元素，记录和恢复播放进度
  * 支持 iframe 内视频、DPlayer、HLS 流媒体等
  */
@@ -14,7 +14,7 @@
     MIN_DURATION: 5,
     AUTO_PLAY: true,
     SCAN_INTERVAL: 3000,
-    DEBUG: true
+    DEBUG: false  // 生产环境关闭调试日志
   };
 
   const videoMap = new Map();
@@ -26,15 +26,15 @@
 
   function log(...args) {
     if (CONFIG.DEBUG) {
-      const frameInfo = window.self !== window.top ? '[iframe]' : '[main]';
-      console.log('[VP]' + frameInfo, ...args);
+      const frameInfo = window.self !== window.top ? '[f]' : '[m]';
+      console.log('[MH]' + frameInfo, ...args);
     }
   }
 
   // 检查当前页面是否被排除
   function checkCurrentUrlExcluded(callback) {
     const mainUrl = getMainPageUrl();
-    chrome.runtime.sendMessage({ type: 'checkExcluded', url: mainUrl }, (response) => {
+    chrome.runtime.sendMessage({ type: 'chkExc', url: mainUrl }, (response) => {
       if (chrome.runtime.lastError) {
         log('检查排除状态失败:', chrome.runtime.lastError);
         callback(false);
@@ -48,8 +48,8 @@
 
   // 检查是否启用
   function checkEnabled(callback) {
-    chrome.storage.local.get('vp_enabled', (result) => {
-      isEnabled = result.vp_enabled !== false;
+    chrome.storage.local.get('mh_enabled', (result) => {
+      isEnabled = result.mh_enabled !== false;
       log('检测状态:', isEnabled ? '已启用' : '已禁用');
       if (callback) callback(isEnabled);
     });
@@ -57,7 +57,7 @@
 
   // 监听来自 background 的开关消息
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'toggleEnabled') {
+    if (message.type === 'tglEn') {
       isEnabled = message.enabled;
       log('状态切换:', isEnabled ? '已启用' : '已禁用');
 
@@ -84,7 +84,7 @@
     }
 
     // 更新排除列表
-    if (message.type === 'updateExcludedSites') {
+    if (message.type === 'updExc') {
       excludedSites = message.sites || [];
       checkCurrentUrlExcluded((excluded) => {
         if (excluded) {
@@ -113,11 +113,15 @@
     try {
       // 尝试获取顶层窗口的 URL
       if (window.top && window.top !== window.self) {
-        return window.top.location.href;
+        const topUrl = window.top.location.href;
+        log('获取顶层窗口URL成功:', topUrl);
+        return topUrl;
       }
     } catch (e) {
-      // 跨域限制，使用当前页面 URL
+      // 跨域限制，无法直接访问顶层窗口的 location
+      log('无法获取顶层窗口URL (跨域限制), 使用当前页面URL:', window.location.href);
     }
+    log('使用当前页面URL:', window.location.href);
     return window.location.href;
   }
 
@@ -154,26 +158,42 @@
       cleanUrl = urlObj.origin + urlObj.pathname;
     } catch (e) {}
 
-    // 判断视频源是否有效（非 blob URL）
+    // 处理视频源，包括 blob URL
     let cleanSrc = '';
-    if (videoSrc && !videoSrc.startsWith('blob:')) {
-      cleanSrc = videoSrc;
-      // 移除查询参数
-      if (cleanSrc.includes('?')) {
-        cleanSrc = cleanSrc.split('?')[0];
+    if (videoSrc) {
+      if (videoSrc.startsWith('blob:')) {
+        // 对于 blob URL，尝试提取有用的信息
+        // blob URL 通常是 blob:origin/uuid 格式
+        // 我们使用页面的 origin + blob 后的路径来保持一致性
+        try {
+          const blobUrlObj = new URL(videoSrc);
+          // 使用 blob URL 的路径部分（通常是 UUID）
+          cleanSrc = 'blob:' + blobUrlObj.pathname;
+        } catch (e) {
+          // 如果解析失败，使用原始 blob URL
+          cleanSrc = videoSrc;
+        }
+      } else {
+        // 非 blob URL，移除查询参数
+        cleanSrc = videoSrc;
+        if (cleanSrc.includes('?')) {
+          cleanSrc = cleanSrc.split('?')[0];
+        }
       }
     }
 
     // 如果无法获取有效视频源，只用页面 URL 生成 ID
     if (!cleanSrc) {
-      // 对于 blob URL 或空视频源，只用清理后的页面 URL
+      // 对于空视频源，只用清理后的页面 URL
       const hash = simpleHash(cleanUrl);
-      return `vpos_${hash}`;
+      log('生成视频ID (无视频源):', `mh_${hash}`, '页面:', cleanUrl);
+      return `mh_${hash}`;
     }
 
     // 使用清理后的 URL + 视频源生成唯一 ID
     const hash = simpleHash(cleanUrl + '|' + cleanSrc);
-    return `vpos_${hash}`;
+    log('生成视频ID:', `mh_${hash}`, '页面:', cleanUrl, '视频源:', cleanSrc.substring(0, 50));
+    return `mh_${hash}`;
   }
 
   function simpleHash(str) {
@@ -197,6 +217,7 @@
     if (!isEnabled || currentUrlExcluded) return;
 
     if (!video || isNaN(video.duration) || video.duration < CONFIG.MIN_DURATION) {
+      log('跳过保存: 视频无效或时长不足', vid, 'duration:', video?.duration);
       return;
     }
 
@@ -209,21 +230,27 @@
 
     const progress = video.currentTime / video.duration;
     if (progress > 0.95) {
+      log('跳过保存: 进度超过95%', vid, 'progress:', (progress * 100).toFixed(1) + '%');
       return;
     }
 
+    const saveUrl = getFullUrl();
+    const saveTitle = getPageTitle();
     log('保存进度:', vid, video.currentTime.toFixed(2), '/', video.duration.toFixed(2), reason);
+    log('保存URL:', saveUrl);
 
     chrome.runtime.sendMessage({
-      type: 'saveVP',
+      type: 'saveMH',
       key: vid,
       currentTime: video.currentTime,
       duration: video.duration,
-      url: getFullUrl(),
-      title: getPageTitle()
+      url: saveUrl,
+      title: saveTitle
     }, (response) => {
       if (chrome.runtime.lastError) {
         log('保存进度失败:', chrome.runtime.lastError.message);
+      } else {
+        log('保存进度响应:', response);
       }
     });
   }
@@ -232,9 +259,9 @@
     // 如果已禁用或页面被排除，不恢复
     if (!isEnabled || currentUrlExcluded) return;
 
-    log('尝试恢复进度:', vid);
+    log('尝试恢复进度:', vid, '当前时间:', video.currentTime, 'duration:', video.duration);
 
-    chrome.runtime.sendMessage({ type: 'getVP', key: vid }, (progressData) => {
+    chrome.runtime.sendMessage({ type: 'getMH', key: vid }, (progressData) => {
       if (chrome.runtime.lastError) {
         log('获取进度失败:', chrome.runtime.lastError.message);
         return;
@@ -243,7 +270,10 @@
       log('获取到进度数据:', progressData);
 
       if (progressData && progressData.currentTime > 0) {
+        log('准备应用进度:', progressData.currentTime.toFixed(2), '/', progressData.duration.toFixed(2));
         tryApplyProgress(video, progressData, 0);
+      } else {
+        log('没有找到保存的进度数据');
       }
     });
   }
@@ -305,20 +335,20 @@
     const container = video.parentElement;
     if (!container) return;
 
-    if (container.querySelector('.vp-notify')) return;
+    if (container.querySelector('.mh-notify')) return;
 
     const notification = document.createElement('div');
-    notification.className = 'vp-notify';
+    notification.className = 'mh-notify';
     notification.innerHTML = `
       <span>已恢复至上次播放位置: ${formatTime(savedTime)} / ${formatTime(duration)}</span>
-      <button class="vp-close">&times;</button>
+      <button class="mh-close">&times;</button>
     `;
 
-    if (!document.querySelector('#vp-styles')) {
+    if (!document.querySelector('#mh-styles')) {
       const style = document.createElement('style');
-      style.id = 'vp-styles';
+      style.id = 'mh-styles';
       style.textContent = `
-        .vp-notify {
+        .mh-notify {
           position: absolute;
           top: 50px;
           left: 50%;
@@ -332,11 +362,11 @@
           display: flex;
           align-items: center;
           gap: 12px;
-          animation: vp-in 0.3s ease;
+          animation: mh-in 0.3s ease;
           pointer-events: auto;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        .vp-close {
+        .mh-close {
           background: none;
           border: none;
           color: #fff;
@@ -345,8 +375,8 @@
           padding: 0 4px;
           line-height: 1;
         }
-        .vp-close:hover { color: #ff6b6b; }
-        @keyframes vp-in {
+        .mh-close:hover { color: #ff6b6b; }
+        @keyframes mh-in {
           from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
           to { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
@@ -361,14 +391,14 @@
 
     container.appendChild(notification);
 
-    notification.querySelector('.vp-close').addEventListener('click', (e) => {
+    notification.querySelector('.mh-close').addEventListener('click', (e) => {
       e.stopPropagation();
       notification.remove();
     });
 
     setTimeout(() => {
       if (notification.parentElement) {
-        notification.style.animation = 'vp-in 0.3s ease reverse';
+        notification.style.animation = 'mh-in 0.3s ease reverse';
         setTimeout(() => notification.remove(), 300);
       }
     }, 5000);
@@ -481,11 +511,12 @@
     if (!isEnabled || currentUrlExcluded) return;
 
     const videos = document.querySelectorAll('video');
-    log('扫描到视频数量:', videos.length);
+    log('扫描到视频数量:', videos.length, '页面URL:', getMainPageUrl());
 
     videos.forEach((video, index) => {
       if (!videoMap.has(video)) {
-        log(`发现新视频 [${index}]:`, video.currentSrc || video.src || '无src');
+        const videoSrc = video.currentSrc || video.src || '无src';
+        log(`发现新视频 [${index}]:`, videoSrc, 'readyState:', video.readyState, 'duration:', video.duration);
         setupVideoListeners(video);
       }
     });

@@ -1,11 +1,18 @@
 /**
- * Web Video Positioning - Background Service Worker
+ * MediaHelper - Background Service Worker
  */
 
 // 存储键名前缀
-const VIDEO_KEY_PREFIX = 'vpos_';
-const ENABLED_KEY = 'vp_enabled';
-const EXCLUDED_SITES_KEY = 'vp_excluded_sites';
+const MEDIA_KEY_PREFIX = 'mh_';
+const ENABLED_KEY = 'mh_enabled';
+const EXCLUDED_SITES_KEY = 'mh_exc_sites';
+const DEBUG = false;  // 生产环境关闭调试日志
+
+function log(...args) {
+  if (DEBUG) {
+    console.log('[MH]', ...args);
+  }
+}
 
 // 默认排除的主流视频/直播网站
 // scope: domain = 域名与子页面(全部排除), subdomain = 仅域名本身(只排除首页), path = 仅子页面(只排除子页面)
@@ -104,17 +111,18 @@ function isUrlExcluded(url, callback) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'getVP') {
+  if (message.type === 'getMH') {
     chrome.storage.local.get(message.key, (result) => {
       sendResponse(result[message.key] || null);
     });
     return true;
   }
 
-  if (message.type === 'saveVP') {
+  if (message.type === 'saveMH') {
     // 检查是否在排除列表中
     isUrlExcluded(message.url, (excluded) => {
       if (excluded) {
+        log('保存被拒绝，URL在排除列表中:', message.url);
         sendResponse({ success: false, reason: 'excluded' });
         return;
       }
@@ -127,26 +135,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         timestamp: Date.now()
       };
       chrome.storage.local.set(data, () => {
+        log('保存成功:', message.key, message.currentTime.toFixed(2), '/', message.duration.toFixed(2));
         sendResponse({ success: true });
       });
     });
     return true;
   }
 
-  if (message.type === 'deleteVP') {
+  if (message.type === 'deleteMH') {
     chrome.storage.local.remove(message.key, () => {
       sendResponse({ success: true });
     });
     return true;
   }
 
-  if (message.type === 'getAllVP') {
+  if (message.type === 'getAllMH') {
     chrome.storage.local.get(null, (items) => {
       // 只返回视频进度数据，排除配置项
       const filtered = {};
       Object.entries(items).forEach(([key, value]) => {
-        // 只保留以 vpos_ 开头的视频记录
-        if (key.startsWith(VIDEO_KEY_PREFIX) && key !== ENABLED_KEY && key !== EXCLUDED_SITES_KEY) {
+        // 只保留以 mh_ 开头的视频记录
+        if (key.startsWith(MEDIA_KEY_PREFIX) && key !== ENABLED_KEY && key !== EXCLUDED_SITES_KEY) {
           // 验证数据有效性
           if (value && typeof value.currentTime === 'number' && typeof value.duration === 'number') {
             filtered[key] = value;
@@ -158,11 +167,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'clearAllVP') {
+  if (message.type === 'clearAllMH') {
     chrome.storage.local.get(null, (items) => {
       // 只删除视频进度，保留配置
       const keysToDelete = Object.keys(items).filter(key =>
-        key.startsWith(VIDEO_KEY_PREFIX) && key !== ENABLED_KEY && key !== EXCLUDED_SITES_KEY
+        key.startsWith(MEDIA_KEY_PREFIX) && key !== ENABLED_KEY && key !== EXCLUDED_SITES_KEY
       );
       chrome.storage.local.remove(keysToDelete, () => {
         sendResponse({ success: true });
@@ -171,11 +180,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'toggleEnabled') {
+  if (message.type === 'tglEn') {
     // 广播到所有标签页
     chrome.tabs.query({}, (tabs) => {
       tabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, { type: 'toggleEnabled', enabled: message.enabled }).catch(() => {});
+        chrome.tabs.sendMessage(tab.id, { type: 'tglEn', enabled: message.enabled }).catch(() => {});
       });
     });
     sendResponse({ success: true });
@@ -183,7 +192,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // 获取排除站点列表
-  if (message.type === 'getExcludedSites') {
+  if (message.type === 'getExc') {
     getExcludedSites((sites) => {
       sendResponse(sites);
     });
@@ -191,12 +200,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // 更新排除站点
-  if (message.type === 'updateExcludedSites') {
+  if (message.type === 'updExc') {
     chrome.storage.local.set({ [EXCLUDED_SITES_KEY]: message.sites }, () => {
       // 广播到所有标签页更新排除列表
       chrome.tabs.query({}, (tabs) => {
         tabs.forEach(tab => {
-          chrome.tabs.sendMessage(tab.id, { type: 'updateExcludedSites', sites: message.sites }).catch(() => {});
+          chrome.tabs.sendMessage(tab.id, { type: 'updExc', sites: message.sites }).catch(() => {});
         });
       });
       sendResponse({ success: true });
@@ -205,7 +214,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // 添加排除站点
-  if (message.type === 'addExcludedSite') {
+  if (message.type === 'addExc') {
     getExcludedSites((sites) => {
       const newSite = {
         domain: message.domain,
@@ -220,7 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({ [EXCLUDED_SITES_KEY]: sites }, () => {
           chrome.tabs.query({}, (tabs) => {
             tabs.forEach(tab => {
-              chrome.tabs.sendMessage(tab.id, { type: 'updateExcludedSites', sites }).catch(() => {});
+              chrome.tabs.sendMessage(tab.id, { type: 'updExc', sites }).catch(() => {});
             });
           });
           sendResponse({ success: true, sites });
@@ -233,13 +242,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // 删除排除站点
-  if (message.type === 'removeExcludedSite') {
+  if (message.type === 'rmExc') {
     getExcludedSites((sites) => {
       const filtered = sites.filter(s => s.domain.toLowerCase() !== message.domain.toLowerCase());
       chrome.storage.local.set({ [EXCLUDED_SITES_KEY]: filtered }, () => {
         chrome.tabs.query({}, (tabs) => {
           tabs.forEach(tab => {
-            chrome.tabs.sendMessage(tab.id, { type: 'updateExcludedSites', sites: filtered }).catch(() => {});
+            chrome.tabs.sendMessage(tab.id, { type: 'updExc', sites: filtered }).catch(() => {});
           });
         });
         sendResponse({ success: true, sites: filtered });
@@ -249,7 +258,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // 检查当前页面是否被排除
-  if (message.type === 'checkExcluded') {
+  if (message.type === 'chkExc') {
     isUrlExcluded(message.url, (excluded) => {
       sendResponse({ excluded });
     });
@@ -259,9 +268,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    chrome.storage.local.set({ vp_enabled: true });
-    console.log('Web Video Positioning 已安装');
+    chrome.storage.local.set({ mh_enabled: true });
+    log('已安装');
   } else if (details.reason === 'update') {
-    console.log('Web Video Positioning 已更新');
+    log('已更新');
   }
 });
