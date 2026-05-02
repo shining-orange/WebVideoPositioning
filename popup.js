@@ -11,6 +11,7 @@
   const totalVideos = document.getElementById('totalVideos');
   const searchInput = document.getElementById('searchInput');
   const clearAllBtn = document.getElementById('clearAllBtn');
+  const enableToggle = document.getElementById('enableToggle');
 
   let allProgress = {};
 
@@ -36,7 +37,6 @@
     const now = new Date();
     const diff = now - date;
 
-    // 一天内显示相对时间
     if (diff < 60000) return '刚刚';
     if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
@@ -70,7 +70,6 @@
     emptyState.style.display = 'none';
     totalVideos.textContent = entries.length;
 
-    // 按时间倒序排序
     entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
 
     videoList.innerHTML = entries.map(([key, data]) => {
@@ -108,7 +107,6 @@
       `;
     }).join('');
 
-    // 绑定事件
     bindEvents();
   }
 
@@ -116,7 +114,6 @@
    * 绑定事件
    */
   function bindEvents() {
-    // 删除按钮
     document.querySelectorAll('.btn-delete').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -124,39 +121,27 @@
         const key = item.dataset.key;
 
         if (confirm('确定要删除这条记录吗？')) {
-          chrome.runtime.sendMessage(
-            { type: 'deleteVP', key },
-            () => {
-              item.style.animation = 'slideOut 0.3s ease forwards';
-              setTimeout(() => {
-                loadProgress();
-              }, 300);
-            }
-          );
+          chrome.runtime.sendMessage({ type: 'deleteVP', key }, () => {
+            item.style.animation = 'slideOut 0.3s ease forwards';
+            setTimeout(loadProgress, 300);
+          });
         }
       });
     });
 
-    // 跳转按钮
     document.querySelectorAll('.btn-jump').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const item = btn.closest('.video-item');
         const url = item.dataset.url;
-
-        if (url) {
-          chrome.tabs.create({ url });
-        }
+        if (url) chrome.tabs.create({ url });
       });
     });
 
-    // 点击项目跳转
     document.querySelectorAll('.video-item').forEach(item => {
       item.addEventListener('click', () => {
         const url = item.dataset.url;
-        if (url) {
-          chrome.tabs.create({ url });
-        }
+        if (url) chrome.tabs.create({ url });
       });
     });
   }
@@ -170,9 +155,28 @@
         console.error('获取进度失败:', chrome.runtime.lastError);
         return;
       }
-
       allProgress = response || {};
       renderVideoList(allProgress);
+    });
+  }
+
+  /**
+   * 加载启用状态
+   */
+  function loadEnabledState() {
+    chrome.storage.local.get('vp_enabled', (result) => {
+      const enabled = result.vp_enabled !== false; // 默认启用
+      enableToggle.checked = enabled;
+    });
+  }
+
+  /**
+   * 切换启用状态
+   */
+  function toggleEnabled(enabled) {
+    chrome.storage.local.set({ vp_enabled: enabled }, () => {
+      // 通知所有 content script 更新状态
+      chrome.runtime.sendMessage({ type: 'toggleEnabled', enabled });
     });
   }
 
@@ -205,7 +209,7 @@
    */
   function clearAll() {
     if (confirm('确定要清空所有视频进度记录吗？此操作不可恢复。')) {
-      chrome.storage.local.clear(() => {
+      chrome.runtime.sendMessage({ type: 'clearAllVP' }, () => {
         loadProgress();
       });
     }
@@ -213,6 +217,7 @@
 
   // 初始化
   loadProgress();
+  loadEnabledState();
 
   // 搜索事件
   searchInput.addEventListener('input', (e) => {
@@ -221,4 +226,9 @@
 
   // 清空按钮
   clearAllBtn.addEventListener('click', clearAll);
+
+  // 开关按钮
+  enableToggle.addEventListener('change', (e) => {
+    toggleEnabled(e.target.checked);
+  });
 })();

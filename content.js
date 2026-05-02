@@ -9,17 +9,18 @@
 
   // 配置项
   const CONFIG = {
-    SAVE_INTERVAL: 3000,        // 定时保存间隔（毫秒）
-    TIME_UPDATE_INTERVAL: 5,    // timeupdate 触发保存的间隔（秒）
-    MIN_DURATION: 5,            // 最小视频时长（秒）
-    AUTO_PLAY: true,            // 恢复进度后是否自动播放
-    SCAN_INTERVAL: 3000,        // 扫描视频间隔（毫秒）
-    DEBUG: true                 // 调试模式
+    SAVE_INTERVAL: 3000,
+    TIME_UPDATE_INTERVAL: 5,
+    MIN_DURATION: 5,
+    AUTO_PLAY: true,
+    SCAN_INTERVAL: 3000,
+    DEBUG: true
   };
 
   const videoMap = new Map();
   let scanTimer = null;
   let isInitialized = false;
+  let isEnabled = true;  // 是否启用检测
 
   function log(...args) {
     if (CONFIG.DEBUG) {
@@ -28,20 +29,75 @@
     }
   }
 
-  function getFullUrl() {
-    try {
-      if (window.self !== window.top && window.frameElement) {
-        return window.frameElement.src || window.location.href;
+  // 检查是否启用
+  function checkEnabled(callback) {
+    chrome.storage.local.get('vp_enabled', (result) => {
+      isEnabled = result.vp_enabled !== false;
+      log('检测状态:', isEnabled ? '已启用' : '已禁用');
+      if (callback) callback(isEnabled);
+    });
+  }
+
+  // 监听来自 background 的开关消息
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'toggleEnabled') {
+      isEnabled = message.enabled;
+      log('状态切换:', isEnabled ? '已启用' : '已禁用');
+
+      if (!isEnabled) {
+        // 禁用时停止扫描
+        if (scanTimer) {
+          clearInterval(scanTimer);
+          scanTimer = null;
+        }
+        // 清除所有视频监听器标记（但不移除已绑定的事件）
+        videoMap.clear();
+        log('已停止视频检测');
+      } else {
+        // 启用时重新扫描
+        if (!scanTimer) {
+          scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
+        }
+        scanVideos();
+        log('已恢复视频检测');
       }
-      return window.location.href;
-    } catch (e) {
-      return window.location.href;
+
+      sendResponse({ success: true });
     }
+    return true;
+  });
+
+  // 获取主页面 URL（用户实际访问的网站）
+  function getMainPageUrl() {
+    try {
+      // 尝试获取顶层窗口的 URL
+      if (window.top && window.top !== window.self) {
+        return window.top.location.href;
+      }
+    } catch (e) {
+      // 跨域限制，使用当前页面 URL
+    }
+    return window.location.href;
+  }
+
+  // 获取主页面标题
+  function getMainPageTitle() {
+    try {
+      if (window.top && window.top !== window.self && window.top.document) {
+        return window.top.document.title || document.title || getMainPageUrl();
+      }
+    } catch (e) {}
+    return document.title || window.location.href;
+  }
+
+  function getFullUrl() {
+    // 始终返回主页面 URL，方便用户跳转回原网站
+    return getMainPageUrl();
   }
 
   function generateVideoId(video) {
-    const domain = window.location.hostname;
-    const pathname = window.location.pathname;
+    // 使用主页面 URL 生成 ID，确保同一视频在不同 iframe 情况下 ID 一致
+    const mainUrl = getMainPageUrl();
     let videoSrc = video.currentSrc || video.src || '';
 
     const sourceElements = video.querySelectorAll('source');
@@ -60,8 +116,9 @@
       cleanSrc = `page_video_${index}`;
     }
 
-    const hash = simpleHash(domain + pathname + cleanSrc);
-    return `vp_${hash}`;
+    // 使用主页面 URL + 视频源生成唯一 ID
+    const hash = simpleHash(mainUrl + cleanSrc);
+    return `vpos_${hash}`;
   }
 
   function simpleHash(str) {
@@ -75,23 +132,19 @@
   }
 
   function getPageTitle() {
-    try {
-      if (window.top && window.top.document) {
-        return window.top.document.title || document.title || window.location.href;
-      }
-    } catch (e) {}
-    return document.title || window.location.href;
+    return getMainPageTitle();
   }
 
-  // 记录上次保存的时间，避免过于频繁
   const lastSaveTime = new Map();
 
   function saveProgress(video, vid, reason = '') {
+    // 如果已禁用，不保存
+    if (!isEnabled) return;
+
     if (!video || isNaN(video.duration) || video.duration < CONFIG.MIN_DURATION) {
       return;
     }
 
-    // 防抖：避免短时间内重复保存
     const now = Date.now();
     const last = lastSaveTime.get(vid) || 0;
     if (now - last < 500) {
@@ -99,7 +152,6 @@
     }
     lastSaveTime.set(vid, now);
 
-    // 不保存已播放完毕的视频
     const progress = video.currentTime / video.duration;
     if (progress > 0.95) {
       return;
@@ -122,6 +174,9 @@
   }
 
   function restoreProgress(video, vid) {
+    // 如果已禁用，不恢复
+    if (!isEnabled) return;
+
     log('尝试恢复进度:', vid);
 
     chrome.runtime.sendMessage({ type: 'getVP', key: vid }, (progressData) => {
@@ -139,6 +194,8 @@
   }
 
   function tryApplyProgress(video, progressData, attempt) {
+    if (!isEnabled) return;
+
     const maxAttempts = 5;
     const attemptDelay = 1000;
 
@@ -171,6 +228,8 @@
   }
 
   function applyProgress(video, progressData) {
+    if (!isEnabled) return;
+
     const savedTime = progressData.currentTime;
     const duration = video.duration;
 
@@ -274,6 +333,9 @@
   function setupVideoListeners(video) {
     if (videoMap.has(video)) return;
 
+    // 如果已禁用，不设置监听器
+    if (!isEnabled) return;
+
     const vid = generateVideoId(video);
     videoMap.set(video, vid);
 
@@ -283,42 +345,36 @@
       duration: video.duration
     });
 
-    // 恢复进度
     restoreProgress(video, vid);
 
-    // ========== 多策略进度保存 ==========
-
-    // 策略1: 定时保存（播放期间）
     let saveTimer = null;
-
-    // 策略2: 记录上次 timeupdate 的时间，每隔N秒保存一次
     let lastTimeUpdateSave = 0;
-
-    // 策略3: 跳转检测 - 记录上次位置，检测大幅度变化
     let lastKnownTime = 0;
 
     video.addEventListener('play', () => {
+      if (!isEnabled) return;
       log('视频开始播放');
       if (saveTimer) clearInterval(saveTimer);
       saveTimer = setInterval(() => {
-        if (!video.paused) {
+        if (!video.paused && isEnabled) {
           saveProgress(video, vid, '[定时]');
         }
       }, CONFIG.SAVE_INTERVAL);
     });
 
     video.addEventListener('pause', () => {
+      if (!isEnabled) return;
       log('视频暂停于', video.currentTime.toFixed(2));
       if (saveTimer) {
         clearInterval(saveTimer);
         saveTimer = null;
       }
-      // 暂停时立即保存
       saveProgress(video, vid, '[暂停]');
     });
 
-    // 策略2: timeupdate 事件 - 每隔几秒保存一次
     video.addEventListener('timeupdate', () => {
+      if (!isEnabled) return;
+
       const now = Date.now();
       if (now - lastTimeUpdateSave > CONFIG.TIME_UPDATE_INTERVAL * 1000) {
         lastTimeUpdateSave = now;
@@ -327,18 +383,16 @@
         }
       }
 
-      // 策略3: 检测大幅度跳转（用户拖动进度条）
       const timeDiff = Math.abs(video.currentTime - lastKnownTime);
       if (timeDiff > 10 && lastKnownTime > 0) {
-        // 跳转超过10秒，可能是用户拖动进度条
         log('检测到跳转:', lastKnownTime.toFixed(2), '->', video.currentTime.toFixed(2));
         saveProgress(video, vid, '[跳转]');
       }
       lastKnownTime = video.currentTime;
     });
 
-    // 策略4: seeked 事件 - 用户拖动进度条后保存
     video.addEventListener('seeked', () => {
+      if (!isEnabled) return;
       log('用户跳转到', video.currentTime.toFixed(2));
       saveProgress(video, vid, '[seeked]');
     });
@@ -351,27 +405,26 @@
       }
     });
 
-    // 策略5: 页面卸载前保存
     window.addEventListener('beforeunload', () => {
-      saveProgress(video, vid, '[卸载]');
+      if (isEnabled) saveProgress(video, vid, '[卸载]');
     });
 
-    // 策略6: 页面隐藏时保存（切换标签页、最小化等）
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
+      if (document.hidden && isEnabled) {
         saveProgress(video, vid, '[隐藏]');
       }
     });
 
-    // 策略7: 窗口失焦时保存
     window.addEventListener('blur', () => {
-      if (!video.paused) {
+      if (!video.paused && isEnabled) {
         saveProgress(video, vid, '[失焦]');
       }
     });
   }
 
   function scanVideos() {
+    if (!isEnabled) return;
+
     const videos = document.querySelectorAll('video');
     log('扫描到视频数量:', videos.length);
 
@@ -387,6 +440,8 @@
     if (!document.body) return;
 
     const observer = new MutationObserver((mutations) => {
+      if (!isEnabled) return;
+
       let hasNewVideo = false;
 
       mutations.forEach((mutation) => {
@@ -414,18 +469,24 @@
 
   function init() {
     if (isInitialized) return;
-    isInitialized = true;
 
-    log('初始化，页面URL:', window.location.href);
-    log('是否在iframe中:', window.self !== window.top);
+    // 先检查是否启用
+    checkEnabled((enabled) => {
+      isInitialized = true;
 
-    scanVideos();
-    setTimeout(scanVideos, 1500);
-    setTimeout(scanVideos, 3000);
-    setTimeout(scanVideos, 5000);
+      log('初始化，页面URL:', window.location.href);
+      log('是否在iframe中:', window.self !== window.top);
 
-    scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
-    observeDOM();
+      if (enabled) {
+        scanVideos();
+        setTimeout(scanVideos, 1500);
+        setTimeout(scanVideos, 3000);
+        setTimeout(scanVideos, 5000);
+
+        scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
+        observeDOM();
+      }
+    });
   }
 
   if (document.readyState === 'loading') {
