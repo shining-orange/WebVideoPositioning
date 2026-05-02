@@ -19,7 +19,14 @@
       </div>
     </header>
 
-    <main>
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="videos">视频列表</button>
+      <button class="tab-btn" data-tab="exclusions">排除网站</button>
+    </div>
+
+    <!-- Videos Tab -->
+    <div class="tab-content active" id="videosTab">
       <div class="stats" id="stats">
         <div class="stat-item">
           <span class="stat-value" id="totalVideos">0</span>
@@ -39,7 +46,29 @@
         <p>暂无保存的视频进度</p>
         <p class="hint">观看网页视频时，进度会自动保存</p>
       </div>
-    </main>
+    </div>
+
+    <!-- Exclusions Tab -->
+    <div class="tab-content" id="exclusionsTab">
+      <div class="exclusion-header">
+        <p class="exclusion-hint">排除的网站将不会记录视频进度</p>
+      </div>
+
+      <div class="add-exclusion">
+        <input type="text" id="newSiteDomain" placeholder="输入域名/路径 (如: example.com/path)">
+        <input type="text" id="newSiteName" placeholder="名称 (可选)">
+        <select id="newSiteScope" class="scope-select">
+          <option value="domain">域名与子页面</option>
+          <option value="subdomain">仅域名本身</option>
+          <option value="path">仅子页面</option>
+        </select>
+        <button id="addSiteBtn" class="btn-add">添加</button>
+      </div>
+
+      <div class="exclusion-list" id="exclusionList">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>
 
     <footer>
       <button id="clearAllBtn" class="btn-danger">清空所有记录</button>

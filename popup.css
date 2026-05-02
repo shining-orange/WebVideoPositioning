@@ -290,6 +290,212 @@ footer {
   color: white;
 }
 
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  color: #667eea;
+  background: #f8f9ff;
+}
+
+.tab-btn.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+  font-weight: 500;
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-content.active {
+  display: flex;
+}
+
+/* Exclusion Tab */
+.exclusion-header {
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+
+.exclusion-hint {
+  font-size: 12px;
+  color: #888;
+  margin: 0;
+}
+
+.add-exclusion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+
+.add-exclusion input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.add-exclusion input:focus {
+  border-color: #667eea;
+}
+
+.add-exclusion input:first-child {
+  flex: 2;
+}
+
+.scope-select {
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  background: white;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.scope-select:focus {
+  border-color: #667eea;
+}
+
+.btn-add {
+  padding: 8px 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-add:hover {
+  background: #5a6fd6;
+}
+
+.exclusion-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.exclusion-item {
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  transition: background 0.2s;
+  gap: 10px;
+}
+
+.exclusion-item:hover {
+  background: #f8f9ff;
+}
+
+.exclusion-item.disabled {
+  opacity: 0.5;
+}
+
+.exclusion-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #667eea;
+  flex-shrink: 0;
+}
+
+.exclusion-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.exclusion-name {
+  font-weight: 500;
+  color: #333;
+  font-size: 13px;
+}
+
+.exclusion-domain {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.scope-select-item {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 11px;
+  outline: none;
+  background: white;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.scope-select-item:focus {
+  border-color: #667eea;
+}
+
+.exclusion-delete {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.exclusion-delete:hover {
+  background: #ffebee;
+  color: #d32f2f;
+}
+
+.exclusion-empty {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-size: 13px;
+}
+
 /* Animations */
 @keyframes slideOut {
   to {

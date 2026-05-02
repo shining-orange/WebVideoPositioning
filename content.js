@@ -21,12 +21,29 @@
   let scanTimer = null;
   let isInitialized = false;
   let isEnabled = true;  // 是否启用检测
+  let excludedSites = []; // 排除站点列表
+  let currentUrlExcluded = false; // 当前页面是否被排除
 
   function log(...args) {
     if (CONFIG.DEBUG) {
       const frameInfo = window.self !== window.top ? '[iframe]' : '[main]';
       console.log('[VP]' + frameInfo, ...args);
     }
+  }
+
+  // 检查当前页面是否被排除
+  function checkCurrentUrlExcluded(callback) {
+    const mainUrl = getMainPageUrl();
+    chrome.runtime.sendMessage({ type: 'checkExcluded', url: mainUrl }, (response) => {
+      if (chrome.runtime.lastError) {
+        log('检查排除状态失败:', chrome.runtime.lastError);
+        callback(false);
+        return;
+      }
+      currentUrlExcluded = response ? response.excluded : false;
+      log('页面排除状态:', currentUrlExcluded ? '已排除' : '未排除', mainUrl);
+      if (callback) callback(currentUrlExcluded);
+    });
   }
 
   // 检查是否启用
@@ -50,20 +67,44 @@
           clearInterval(scanTimer);
           scanTimer = null;
         }
-        // 清除所有视频监听器标记（但不移除已绑定的事件）
         videoMap.clear();
         log('已停止视频检测');
       } else {
-        // 启用时重新扫描
-        if (!scanTimer) {
-          scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
-        }
-        scanVideos();
-        log('已恢复视频检测');
+        // 启用时重新检查排除状态并扫描
+        checkCurrentUrlExcluded((excluded) => {
+          if (!excluded && !scanTimer) {
+            scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
+            scanVideos();
+            log('已恢复视频检测');
+          }
+        });
       }
 
       sendResponse({ success: true });
     }
+
+    // 更新排除列表
+    if (message.type === 'updateExcludedSites') {
+      excludedSites = message.sites || [];
+      checkCurrentUrlExcluded((excluded) => {
+        if (excluded) {
+          // 当前页面被排除，停止检测
+          if (scanTimer) {
+            clearInterval(scanTimer);
+            scanTimer = null;
+          }
+          videoMap.clear();
+          log('页面被排除，已停止视频检测');
+        } else if (isEnabled && !scanTimer) {
+          // 当前页面不再被排除，恢复检测
+          scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
+          scanVideos();
+          log('页面不再被排除，已恢复视频检测');
+        }
+      });
+      sendResponse({ success: true });
+    }
+
     return true;
   });
 
@@ -105,19 +146,33 @@
       videoSrc = sourceElements[0].src || '';
     }
 
-    let cleanSrc = videoSrc.replace('blob:', '');
-    if (cleanSrc.includes('.m3u8')) {
-      cleanSrc = cleanSrc.split('?')[0];
+    // 清理页面 URL，移除动态参数，只保留核心路径
+    let cleanUrl = mainUrl;
+    try {
+      const urlObj = new URL(mainUrl);
+      // 只保留路径，移除查询参数和哈希
+      cleanUrl = urlObj.origin + urlObj.pathname;
+    } catch (e) {}
+
+    // 判断视频源是否有效（非 blob URL）
+    let cleanSrc = '';
+    if (videoSrc && !videoSrc.startsWith('blob:')) {
+      cleanSrc = videoSrc;
+      // 移除查询参数
+      if (cleanSrc.includes('?')) {
+        cleanSrc = cleanSrc.split('?')[0];
+      }
     }
 
+    // 如果无法获取有效视频源，只用页面 URL 生成 ID
     if (!cleanSrc) {
-      const videos = document.querySelectorAll('video');
-      const index = Array.from(videos).indexOf(video);
-      cleanSrc = `page_video_${index}`;
+      // 对于 blob URL 或空视频源，只用清理后的页面 URL
+      const hash = simpleHash(cleanUrl);
+      return `vpos_${hash}`;
     }
 
-    // 使用主页面 URL + 视频源生成唯一 ID
-    const hash = simpleHash(mainUrl + cleanSrc);
+    // 使用清理后的 URL + 视频源生成唯一 ID
+    const hash = simpleHash(cleanUrl + '|' + cleanSrc);
     return `vpos_${hash}`;
   }
 
@@ -138,8 +193,8 @@
   const lastSaveTime = new Map();
 
   function saveProgress(video, vid, reason = '') {
-    // 如果已禁用，不保存
-    if (!isEnabled) return;
+    // 如果已禁用或页面被排除，不保存
+    if (!isEnabled || currentUrlExcluded) return;
 
     if (!video || isNaN(video.duration) || video.duration < CONFIG.MIN_DURATION) {
       return;
@@ -174,8 +229,8 @@
   }
 
   function restoreProgress(video, vid) {
-    // 如果已禁用，不恢复
-    if (!isEnabled) return;
+    // 如果已禁用或页面被排除，不恢复
+    if (!isEnabled || currentUrlExcluded) return;
 
     log('尝试恢复进度:', vid);
 
@@ -194,7 +249,7 @@
   }
 
   function tryApplyProgress(video, progressData, attempt) {
-    if (!isEnabled) return;
+    if (!isEnabled || currentUrlExcluded) return;
 
     const maxAttempts = 5;
     const attemptDelay = 1000;
@@ -228,7 +283,7 @@
   }
 
   function applyProgress(video, progressData) {
-    if (!isEnabled) return;
+    if (!isEnabled || currentUrlExcluded) return;
 
     const savedTime = progressData.currentTime;
     const duration = video.duration;
@@ -333,8 +388,8 @@
   function setupVideoListeners(video) {
     if (videoMap.has(video)) return;
 
-    // 如果已禁用，不设置监听器
-    if (!isEnabled) return;
+    // 如果已禁用或页面被排除，不设置监听器
+    if (!isEnabled || currentUrlExcluded) return;
 
     const vid = generateVideoId(video);
     videoMap.set(video, vid);
@@ -423,7 +478,7 @@
   }
 
   function scanVideos() {
-    if (!isEnabled) return;
+    if (!isEnabled || currentUrlExcluded) return;
 
     const videos = document.querySelectorAll('video');
     log('扫描到视频数量:', videos.length);
@@ -440,7 +495,7 @@
     if (!document.body) return;
 
     const observer = new MutationObserver((mutations) => {
-      if (!isEnabled) return;
+      if (!isEnabled || currentUrlExcluded) return;
 
       let hasNewVideo = false;
 
@@ -478,13 +533,20 @@
       log('是否在iframe中:', window.self !== window.top);
 
       if (enabled) {
-        scanVideos();
-        setTimeout(scanVideos, 1500);
-        setTimeout(scanVideos, 3000);
-        setTimeout(scanVideos, 5000);
+        // 检查当前页面是否被排除
+        checkCurrentUrlExcluded((excluded) => {
+          if (!excluded) {
+            scanVideos();
+            setTimeout(scanVideos, 1500);
+            setTimeout(scanVideos, 3000);
+            setTimeout(scanVideos, 5000);
 
-        scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
-        observeDOM();
+            scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
+            observeDOM();
+          } else {
+            log('当前页面在排除列表中，跳过视频检测');
+          }
+        });
       }
     });
   }
