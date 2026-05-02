@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Video Positioning</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📺 视频进度管理</h1>
+    </header>
+
+    <main>
+      <div class="stats" id="stats">
+        <div class="stat-item">
+          <span class="stat-value" id="totalVideos">0</span>
+          <span class="stat-label">已保存视频</span>
+        </div>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索视频...">
+      </div>
+
+      <div class="video-list" id="videoList">
+        <div class="loading">加载中...</div>
+      </div>
+
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <p>暂无保存的视频进度</p>
+        <p class="hint">观看网页视频时，进度会自动保存</p>
+      </div>
+    </main>
+
+    <footer>
+      <button id="clearAllBtn" class="btn-danger">清空所有记录</button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

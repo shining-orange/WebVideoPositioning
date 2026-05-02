@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Video Positioning - 测试页面</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      opacity: 0.9;
+      font-size: 1.1em;
+    }
+
+    .video-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .video-card h2 {
+      color: #333;
+      margin-bottom: 16px;
+      font-size: 1.3em;
+    }
+
+    .video-wrapper {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      border-radius: 8px;
+    }
+
+    .info-box {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .info-box h3 {
+      color: #667eea;
+      margin-bottom: 8px;
+    }
+
+    .info-box ul {
+      color: #666;
+      padding-left: 20px;
+    }
+
+    .info-box li {
+      margin-bottom: 4px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      margin-top: 12px;
+    }
+
+    .status.active {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 40px;
+    }
+
+    .feature-card {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .feature-card .icon {
+      font-size: 2.5em;
+      margin-bottom: 12px;
+    }
+
+    .feature-card h3 {
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      color: #666;
+      font-size: 0.9em;
+    }
+
+    footer {
+      text-align: center;
+      color: white;
+      margin-top: 40px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📺 Web Video Positioning</h1>
+      <p>自动记录视频播放进度，下次访问自动恢复</p>
+    </header>
+
+    <div class="video-card">
+      <h2>🎬 测试视频 1 - Big Buck Bunny</h2>
+      <div class="video-wrapper">
+        <video id="video1" controls preload="metadata">
+          <source src="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4" type="video/mp4">
+          您的浏览器不支持 HTML5 视频
+        </video>
+      </div>
+      <div class="info-box">
+        <h3>测试说明</h3>
+        <ul>
+          <li>播放视频后关闭此页面</li>
+          <li>重新打开此页面，视频会自动跳转到上次播放位置</li>
+          <li>点击扩展图标可查看所有保存的视频进度</li>
+        </ul>
+        <span class="status active">✓ 扩展已激活</span>
+      </div>
+    </div>
+
+    <div class="video-card">
+      <h2>🎬 测试视频 2 - Sintel</h2>
+      <div class="video-wrapper">
+        <video id="video2" controls preload="metadata">
+          <source src="https://test-videos.co.uk/vids/sintel/mp4/h264/360/Sintel_360_10s_1MB.mp4" type="video/mp4">
+          您的浏览器不支持 HTML5 视频
+        </video>
+      </div>
+      <div class="info-box">
+        <h3>多视频测试</h3>
+        <ul>
+          <li>此页面包含多个视频，每个视频的进度独立保存</li>
+          <li>刷新页面后，所有视频都会恢复到各自的进度</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="icon">🔄</div>
+        <h3>智能断点续播</h3>
+        <p>自动记录播放进度，下次访问自动恢复</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🔒</div>
+        <h3>隐私安全</h3>
+        <p>所有数据存储在本地，不上传云端</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🌐</div>
+        <h3>全站支持</h3>
+        <p>支持所有 HTML5 视频网站</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⚡</div>
+        <h3>极速响应</h3>
+        <p>视频加载完成立即跳转</p>
+      </div>
+    </div>
+
+    <footer>
+      <p>Web Video Positioning v1.0.0 | 基于 Manifest V3 构建</p>
+    </footer>
+  </div>
+
+  <script>
+    // 添加调试信息
+    console.log('Web Video Positioning 测试页面已加载');
+    console.log('找到视频元素:', document.querySelectorAll('video').length);
+
+    // 监听视频事件用于调试
+    document.querySelectorAll('video').forEach((video, index) => {
+      video.addEventListener('play', () => {
+        console.log(`视频 ${index + 1} 开始播放`);
+      });
+      video.addEventListener('pause', () => {
+        console.log(`视频 ${index + 1} 暂停于 ${video.currentTime.toFixed(2)}s`);
+      });
+      video.addEventListener('timeupdate', () => {
+        // 每5秒打印一次进度
+        if (Math.floor(video.currentTime) % 5 === 0 && video.currentTime > 0) {
+          console.log(`视频 ${index + 1} 当前进度: ${video.currentTime.toFixed(2)}s / ${video.duration.toFixed(2)}s`);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
