@@ -9,12 +9,12 @@
 
   // 配置项
   const CONFIG = {
-    SAVE_INTERVAL: 2000,
-    RESTORE_DELAY: 1500,
-    MIN_DURATION: 5,
-    AUTO_PLAY: true,
-    SCAN_INTERVAL: 3000,
-    DEBUG: true
+    SAVE_INTERVAL: 3000,        // 定时保存间隔（毫秒）
+    TIME_UPDATE_INTERVAL: 5,    // timeupdate 触发保存的间隔（秒）
+    MIN_DURATION: 5,            // 最小视频时长（秒）
+    AUTO_PLAY: true,            // 恢复进度后是否自动播放
+    SCAN_INTERVAL: 3000,        // 扫描视频间隔（毫秒）
+    DEBUG: true                 // 调试模式
   };
 
   const videoMap = new Map();
@@ -83,17 +83,29 @@
     return document.title || window.location.href;
   }
 
-  function saveProgress(video, vid) {
+  // 记录上次保存的时间，避免过于频繁
+  const lastSaveTime = new Map();
+
+  function saveProgress(video, vid, reason = '') {
     if (!video || isNaN(video.duration) || video.duration < CONFIG.MIN_DURATION) {
       return;
     }
 
+    // 防抖：避免短时间内重复保存
+    const now = Date.now();
+    const last = lastSaveTime.get(vid) || 0;
+    if (now - last < 500) {
+      return;
+    }
+    lastSaveTime.set(vid, now);
+
+    // 不保存已播放完毕的视频
     const progress = video.currentTime / video.duration;
     if (progress > 0.95) {
       return;
     }
 
-    log('保存进度:', vid, video.currentTime.toFixed(2), '/', video.duration.toFixed(2));
+    log('保存进度:', vid, video.currentTime.toFixed(2), '/', video.duration.toFixed(2), reason);
 
     chrome.runtime.sendMessage({
       type: 'saveVP',
@@ -271,15 +283,27 @@
       duration: video.duration
     });
 
+    // 恢复进度
     restoreProgress(video, vid);
 
+    // ========== 多策略进度保存 ==========
+
+    // 策略1: 定时保存（播放期间）
     let saveTimer = null;
+
+    // 策略2: 记录上次 timeupdate 的时间，每隔N秒保存一次
+    let lastTimeUpdateSave = 0;
+
+    // 策略3: 跳转检测 - 记录上次位置，检测大幅度变化
+    let lastKnownTime = 0;
 
     video.addEventListener('play', () => {
       log('视频开始播放');
       if (saveTimer) clearInterval(saveTimer);
       saveTimer = setInterval(() => {
-        saveProgress(video, vid);
+        if (!video.paused) {
+          saveProgress(video, vid, '[定时]');
+        }
       }, CONFIG.SAVE_INTERVAL);
     });
 
@@ -289,7 +313,34 @@
         clearInterval(saveTimer);
         saveTimer = null;
       }
-      saveProgress(video, vid);
+      // 暂停时立即保存
+      saveProgress(video, vid, '[暂停]');
+    });
+
+    // 策略2: timeupdate 事件 - 每隔几秒保存一次
+    video.addEventListener('timeupdate', () => {
+      const now = Date.now();
+      if (now - lastTimeUpdateSave > CONFIG.TIME_UPDATE_INTERVAL * 1000) {
+        lastTimeUpdateSave = now;
+        if (!video.paused && video.currentTime > 0) {
+          saveProgress(video, vid, '[timeupdate]');
+        }
+      }
+
+      // 策略3: 检测大幅度跳转（用户拖动进度条）
+      const timeDiff = Math.abs(video.currentTime - lastKnownTime);
+      if (timeDiff > 10 && lastKnownTime > 0) {
+        // 跳转超过10秒，可能是用户拖动进度条
+        log('检测到跳转:', lastKnownTime.toFixed(2), '->', video.currentTime.toFixed(2));
+        saveProgress(video, vid, '[跳转]');
+      }
+      lastKnownTime = video.currentTime;
+    });
+
+    // 策略4: seeked 事件 - 用户拖动进度条后保存
+    video.addEventListener('seeked', () => {
+      log('用户跳转到', video.currentTime.toFixed(2));
+      saveProgress(video, vid, '[seeked]');
     });
 
     video.addEventListener('ended', () => {
@@ -300,13 +351,22 @@
       }
     });
 
+    // 策略5: 页面卸载前保存
     window.addEventListener('beforeunload', () => {
-      saveProgress(video, vid);
+      saveProgress(video, vid, '[卸载]');
     });
 
+    // 策略6: 页面隐藏时保存（切换标签页、最小化等）
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        saveProgress(video, vid);
+        saveProgress(video, vid, '[隐藏]');
+      }
+    });
+
+    // 策略7: 窗口失焦时保存
+    window.addEventListener('blur', () => {
+      if (!video.paused) {
+        saveProgress(video, vid, '[失焦]');
       }
     });
   }
@@ -360,9 +420,9 @@
     log('是否在iframe中:', window.self !== window.top);
 
     scanVideos();
-    setTimeout(scanVideos, CONFIG.RESTORE_DELAY);
-    setTimeout(scanVideos, CONFIG.RESTORE_DELAY * 2);
-    setTimeout(scanVideos, CONFIG.RESTORE_DELAY * 3);
+    setTimeout(scanVideos, 1500);
+    setTimeout(scanVideos, 3000);
+    setTimeout(scanVideos, 5000);
 
     scanTimer = setInterval(scanVideos, CONFIG.SCAN_INTERVAL);
     observeDOM();
